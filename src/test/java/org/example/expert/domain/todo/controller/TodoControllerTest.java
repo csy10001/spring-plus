@@ -2,25 +2,38 @@ package org.example.expert.domain.todo.controller;
 
 import org.example.expert.domain.common.dto.AuthUser;
 import org.example.expert.domain.common.exception.InvalidRequestException;
+import org.example.expert.domain.todo.dto.request.TodoSaveRequest;
 import org.example.expert.domain.todo.dto.response.TodoResponse;
+import org.example.expert.domain.todo.dto.response.TodoSaveResponse;
 import org.example.expert.domain.todo.service.TodoService;
 import org.example.expert.domain.user.dto.response.UserResponse;
 import org.example.expert.domain.user.entity.User;
 import org.example.expert.domain.user.enums.UserRole;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDateTime;
+import java.util.List;
+
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.when;
+
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(TodoController.class)
+@AutoConfigureMockMvc(addFilters = false)
 class TodoControllerTest {
 
     @Autowired
@@ -28,6 +41,47 @@ class TodoControllerTest {
 
     @MockBean
     private TodoService todoService;
+
+    @Test
+    void saveTodo_성공() throws Exception {
+        AuthUser principal = new AuthUser(1L, "user@test.com", UserRole.USER, "nick");
+        var auth = new UsernamePasswordAuthenticationToken(
+                principal,
+                null,
+                List.of(new SimpleGrantedAuthority("ROLE_USER"))
+        );
+
+        UserResponse userResp = new UserResponse(1L, "user@test.com");
+        TodoSaveResponse saved = new TodoSaveResponse(
+                123L, "test title", "test contents", "Sunny", userResp
+        );
+
+        when(todoService.saveTodo(nullable(AuthUser.class), any(TodoSaveRequest.class)))
+                .thenReturn(saved);
+
+        String body = """
+        {
+          "title": "test title",
+          "contents": "test contents",
+          "weather": "Sunny"
+        }
+        """;
+
+        mockMvc.perform(post("/todos")
+                        .with(authentication(auth))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .accept(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.id").value(123))
+                .andExpect(jsonPath("$.title").value("test title"))
+                .andExpect(jsonPath("$.contents").value("test contents"))
+                .andExpect(jsonPath("$.weather").value("Sunny"))
+                .andExpect(jsonPath("$.user.id").value(1))
+                .andExpect(jsonPath("$.user.email").value("user@test.com"));
+    }
+
 
     @Test
     void todo_단건_조회에_성공한다() throws Exception {
